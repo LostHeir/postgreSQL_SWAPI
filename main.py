@@ -26,3 +26,36 @@ conn = psycopg2.connect(host=secrets['host'],
                         user=secrets['user'],
                         password=secrets['pass'],
                         connect_timeout=3)
+
+cur = conn.cursor()
+
+print('# ------------------------------------------- #')
+print('# --- To restart the spider, run: ----------- #')
+print('# --- DROP TABLE IF EXISTS swapi CASCADE; --- #')
+print('# ------------------------------------------- #')
+
+sql = '''
+CREATE TABLE IF NOT EXISTS swapi
+(id serial, url VARCHAR(2048) UNIQUE, status INTEGER, body JSONB,
+created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ);
+'''
+
+print(sql)
+cur.execute(sql)
+
+# Check if table already have some urls, if not add stating points
+sql = 'SELECT COUNT(url) FROM swapi;'
+count = myutils.query_value(cur, sql)
+if count < 1:
+    objects = ['films', 'species', 'people']
+    for obj in objects:
+        sql = f"INSERT INTO swapi (url) VALUES ('https://swapi.dev/api/{obj}/1/' );"
+        print(sql)
+        cur.execute(sql)
+    conn.commit()
+
+many = 0
+count = 0
+chars = 0
+fail = 0
+summary(cur)
