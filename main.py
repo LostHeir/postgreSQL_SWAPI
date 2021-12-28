@@ -59,3 +59,73 @@ count = 0
 chars = 0
 fail = 0
 summary(cur)
+
+while True:
+    if many < 1:
+        conn.commit()
+        summary(cur)
+        sval = input('How many documents?: ')
+        if not sval.isnumeric():
+            print('Hello there Genral not numeric!')
+            break
+        many = int(sval)
+
+    sql = 'SELECT url FROM swapi WHERE status IS NULL LIMIT 1;'
+    url = myutils.query_value(cur, sql)
+
+    if url is None:
+        print('There are no unretrieved documents')
+        break
+
+    try:
+        print('=== URL is', url)
+        response = requests.get(url)
+        text = response.text
+        print('=== TEXT is', text)
+        status = response.status_code
+        sql = 'UPDATE swapi SET status=%s, body=%s, updated_at=NOW() WHERE url = %s;'
+        row = cur.execute(sql, (status, text, url))
+        count += 1
+        chars = chars + len(text)
+    except KeyboardInterrupt:
+        print('# ------------------------------------------- #')
+        print('# --- Program interrupted by user ----------- #')
+        print('# ------------------------------------------- #')
+        break
+    except Exception as e:
+        print("Unable to retrive or parse page", url)
+        print("Error", e)
+        fail += 1
+        if fail > 5:
+            break
+        continue
+
+    todo = myutils.query_value(cur, 'SELECT COUNT(*) FROM swapi WHERE status IS NULL;')
+    print(status, len(text), url, todo)
+
+    js = json.loads(text)
+
+    # Look through all of the "linked data" for other urls to retrieve
+    links = ['films', 'species', 'vehicles', 'starships', 'characters']
+    for link in links:
+        stuff = js.get(link, None)
+        if not isinstance(stuff, list): continue
+        for item in stuff:
+            sql = 'INSERT INTO swapi (url) VALUES ( %s ) ON CONFLICT (url) DO NOTHING;';
+            cur.execute(sql, (item,))
+
+    many = many - 1
+    if count % 25 == 0:
+        conn.commit()
+        print(count, 'loaded...')
+        time.sleep(1)
+        continue
+
+print(' ')
+print(f'Loaded {count} documents, {chars} characters')
+
+summary(cur)
+
+print('Closing database connection...')
+conn.commit()
+cur.close()
